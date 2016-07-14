@@ -1,0 +1,21 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+    <script>
+    var evtSource = new EventSource('http://localhost:3000')
+    evtSource.onmessage = function(e) {
+      var newElement = document.createElement("li");
+      var eventList  = document.getElementById('eventlist');
+
+      newElement.innerHTML = e.data;
+      eventList.appendChild(newElement);
+    }
+    </script>
+
+    <body>
+      <div class="container">
+        <h3> Kafka Events </h3>
+        <ul id="eventlist"></ul>
+      </div>
+    </body>
+</html>
