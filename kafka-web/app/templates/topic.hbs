@@ -1,0 +1,7 @@
+{{#list-filter filter=(action 'filterByContent') results=model as |events|}}
+  <ul class="results">
+    {{#each events as |event|}}
+      <li>{{event.msg}}</li>
+    {{/each}}
+  </ul>
+{{/list-filter}}
