@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,12 +9,13 @@ import (
 	"sync"
 
 	"github.com/Shopify/sarama"
+	"github.com/gorilla/mux"
 )
 
 // Example SSE server in Golang.
 //     $ go run sse.go
 
-type Broker struct {
+type WebBroker struct {
 
 	// Events are pushed to this channel by the main events-gathering routine
 	Notifier chan []byte
@@ -28,9 +30,9 @@ type Broker struct {
 	clients map[chan []byte]bool
 }
 
-func NewServer() (broker *Broker) {
+func NewServer() (broker *WebBroker) {
 	// Instantiate a broker
-	broker = &Broker{
+	broker = &WebBroker{
 		Notifier:       make(chan []byte, 1),
 		newClients:     make(chan chan []byte),
 		closingClients: make(chan chan []byte),
@@ -43,8 +45,10 @@ func NewServer() (broker *Broker) {
 	return
 }
 
-func (broker *Broker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (broker *WebBroker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
+	topic := mux.Vars(req)["topic"]
+	fmt.Println(topic)
 	// Make sure that the writer supports flushing.
 	//
 	flusher, ok := rw.(http.Flusher)
@@ -59,7 +63,7 @@ func (broker *Broker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Set("Connection", "keep-alive")
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Each connection registers its own message channel with the Broker's connections registry
+	// Each connection registers its own message channel with the WebBroker's connections registry
 	messageChan := make(chan []byte)
 
 	// Signal the broker that we have a new connection
@@ -91,7 +95,7 @@ func (broker *Broker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 }
 
-func (broker *Broker) listen() {
+func (broker *WebBroker) listen() {
 	for {
 		select {
 		case s := <-broker.newClients:
@@ -120,13 +124,13 @@ func (broker *Broker) listen() {
 }
 
 func sendKafkaMessages(ch chan []byte) {
-	kafkaBrokerList := "localhost:9092"
-	topic := "example"
+	kafkaWebBrokerList := "localhost:9092"
 	bufferSize := 256
 
+	topic := "example"
 	initialOffset := sarama.OffsetOldest
 
-	c, err := sarama.NewConsumer(strings.Split(kafkaBrokerList, ","), nil)
+	c, err := sarama.NewConsumer(strings.Split(kafkaWebBrokerList, ","), nil)
 
 	if err != nil {
 		log.Printf("Kafka connection error %s", err)
@@ -171,7 +175,27 @@ func sendKafkaMessages(ch chan []byte) {
 	}()
 
 }
+
+func TopicList(rw http.ResponseWriter, req *http.Request) {
+	config := sarama.NewConfig()
+	config.Metadata.Retry.Max = 1
+
+	client, err := sarama.NewClient(strings.Split("localhost:9092", ","), config)
+	topics, err := client.Topics()
+	fmt.Println(topics, err)
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-cache")
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(rw).Encode(topics)
+}
+
 func main() {
+	r := mux.NewRouter()
+
 	broker := NewServer()
-	log.Fatal("HTTP server error: ", http.ListenAndServe("localhost:3000", broker))
+	r.HandleFunc("/{topic}", broker.ServeHTTP)
+	r.HandleFunc("/", TopicList)
+
+	log.Fatal("HTTP server error: ", http.ListenAndServe("localhost:3000", r))
 }
